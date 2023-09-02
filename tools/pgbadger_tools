@@ -103,7 +103,9 @@ my $csv_slowest            = 0;
 my $csv_normalized         = 0;
 my $csv_filename           = 'out.csv';
 
-my $result = GetOptions(
+# Custom functions' options
+my $csv_checkpoint_buffers = 0;
+my $result                 = GetOptions(
     'h|host=s'     => \$pghost,
     'p|port=i'     => \$pgport,
     'U|username=s' => \$pguser,
@@ -123,10 +125,11 @@ my $result = GetOptions(
     'top=i'                   => $top,
 
     # CSV output of top queries tool
-    'csv-time-consuming!' => \$csv_time_consuming,
-    'csv-slowest!'        => \$csv_slowest,
-    'csv-normalized!'     => \$csv_normalized,
-    'csv-filename=s'      => \$csv_filename,
+    'csv-time-consuming!'   => \$csv_time_consuming,
+    'csv-slowest!'          => \$csv_slowest,
+    'csv-normalized!'       => \$csv_normalized,
+    'csv-filename=s'        => \$csv_filename,
+    'csv-checkpoint-files!' => \$csv_checkpoint_buffers,
 );
 
 # Show help an exit
@@ -164,7 +167,7 @@ if ($psql_cmd) {
 }
 
 ####################################################################
-# 1srt tool: Dump top slowest queries inside explain statement. Will
+# 1st tool: Dump top slowest queries inside explain statement. Will
 # be executed when option --explain-slowest is set at command line
 # Add your own condition. See also TOOL FUNCTIONS bellow
 ##################################################################
@@ -217,7 +220,31 @@ if ( $csv_time_consuming || $csv_slowest || $csv_normalized ) {
 ##################################################################
 # Add your own bellow
 ##################################################################
+if ($csv_checkpoint_buffers) {
+    my @columns = (
+        "wbuffer",      "write",        "sync",          "total",
+        "file_added",   "file_removed", "file_recycled", "sync_files",
+        "sync_longest", "sync_average", "distance",      "estimate"
+    );
+    my $curdb = $def_db;
+    foreach my $day ( keys %{ $per_minute_info{$curdb} } ) {
+        foreach my $hour ( keys %{ $per_minute_info{$curdb}{$day} } ) {
+            my %hourly_data = ();
+            foreach my $min ( keys %{ $per_minute_info{$curdb}{$day}{$hour} } )
+            {
+                foreach (@columns) {
+                    $hourly_data{$_} +=
+                      $per_minute_info{$curdb}{$day}{$hour}{$min}{checkpoint}
+                      {$_};
+                }
+            }
+			print "$day $hour:00:00\t";
+			print "$hourly_data{$_}\t" for (keys %hourly_data);
+			print "\n";
 
+        }
+    }
+}
 exit 0;
 
 ##################################################################
@@ -1132,8 +1159,10 @@ sub load_stats {
 
             # Keep only the top N samples
             my $i = 1;
-            foreach my $k ( sort { $b <=> $a }
-                keys %{ $normalyzed_info{$curdb}{$stmt}{samples} } )
+            foreach my $k (
+                sort { $b <=> $a }
+                keys %{ $normalyzed_info{$curdb}{$stmt}{samples} }
+              )
             {
                 if ( $i > $sample ) {
                     delete $normalyzed_info{$curdb}{$stmt}{samples}{$k};
@@ -1513,6 +1542,7 @@ sub fmtquery {
 # Add your own below
 ###############################################################################
 
+
 # Dump top slowest queries as EXPLAIN statement.
 sub dump_slowest_queries {
     my $curdb = shift;
@@ -1600,8 +1630,10 @@ sub dump_times_consuming_queries {
       )
     {
         next if ( !$normalyzed_info{$curdb}{$k}{count} );
-        foreach my $d ( sort { $b <=> $a }
-            keys %{ $normalyzed_info{$curdb}{$k}{samples} } )
+        foreach my $d (
+            sort { $b <=> $a }
+            keys %{ $normalyzed_info{$curdb}{$k}{samples} }
+          )
         {
             # Do not process request that are slower than $max_duration
             next if ( $max_duration && ( $d > $max_duration ) );
@@ -1686,8 +1718,10 @@ sub dump_normalized_slowest_queries {
       )
     {
         next if ( !$normalyzed_info{$curdb}{$k}{count} );
-        foreach my $d ( sort { $b <=> $a }
-            keys %{ $normalyzed_info{$curdb}{$k}{samples} } )
+        foreach my $d (
+            sort { $b <=> $a }
+            keys %{ $normalyzed_info{$curdb}{$k}{samples} }
+          )
         {
             # Do not process request that are slower than $max_duration
             next if ( $max_duration && ( $d > $max_duration ) );
@@ -1789,8 +1823,10 @@ sub csv_times_consuming_queries {
       )
     {
         next if ( !$normalyzed_info{$curdb}{$k}{count} );
-        foreach my $d ( sort { $b <=> $a }
-            keys %{ $normalyzed_info{$curdb}{$k}{samples} } )
+        foreach my $d (
+            sort { $b <=> $a }
+            keys %{ $normalyzed_info{$curdb}{$k}{samples} }
+          )
         {
             # Do not process request that are slower than $max_duration
             next if ( $max_duration && ( $d > $max_duration ) );
@@ -1857,8 +1893,10 @@ sub csv_normalized_queries {
       )
     {
         next if ( !$normalyzed_info{$curdb}{$k}{count} );
-        foreach my $d ( sort { $b <=> $a }
-            keys %{ $normalyzed_info{$curdb}{$k}{samples} } )
+        foreach my $d (
+            sort { $b <=> $a }
+            keys %{ $normalyzed_info{$curdb}{$k}{samples} }
+          )
         {
             # Do not process request that are slower than $max_duration
             next if ( $max_duration && ( $d > $max_duration ) );
