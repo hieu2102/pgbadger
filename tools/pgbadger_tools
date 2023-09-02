@@ -105,6 +105,7 @@ my $csv_filename           = 'out.csv';
 
 # Custom functions' options
 my $csv_checkpoint_buffers = 0;
+my $csv_sessions_time      = 0;
 my $result                 = GetOptions(
     'h|host=s'     => \$pghost,
     'p|port=i'     => \$pgport,
@@ -130,6 +131,7 @@ my $result                 = GetOptions(
     'csv-normalized!'       => \$csv_normalized,
     'csv-filename=s'        => \$csv_filename,
     'csv-checkpoint-files!' => \$csv_checkpoint_buffers,
+    'csv-sessions-time!'    => \$csv_sessions_time,
 );
 
 # Show help an exit
@@ -220,6 +222,28 @@ if ( $csv_time_consuming || $csv_slowest || $csv_normalized ) {
 ##################################################################
 # Add your own bellow
 ##################################################################
+if ($csv_sessions_time) {
+    my $curdb       = $def_db;
+    my @columns     = ( "range", "count" );
+    my %range_human = (
+        0        => '0ms - 500ms',
+        500      => '500ms - 1s',
+        1000     => '1s - 30s',
+        30000    => '30s - 1m',
+        60000    => '1m - 10m',
+        600000   => '10m - 30m',
+        1800000  => '30m - 1h',
+        3600000  => '1h - 8h',
+        28800000 => '> 8h'
+    );
+    print "$_\t" foreach (@columns);
+    print "\n";
+    foreach my $k ( keys %{ $overall_stat{$curdb}{histogram}{session_time} } ) {
+        print
+"$range_human{$k}\t$overall_stat{$curdb}{histogram}{session_time}{$k}\n";
+    }
+
+}
 if ($csv_checkpoint_buffers) {
     my @columns = (
         "wbuffer",      "write",        "sync",          "total",
@@ -227,21 +251,37 @@ if ($csv_checkpoint_buffers) {
         "sync_longest", "sync_average", "distance",      "estimate"
     );
     my $curdb = $def_db;
+    print "recorded_date\t";
+    print "$_\t" foreach (@columns);
+    print "\n";
     foreach my $day ( keys %{ $per_minute_info{$curdb} } ) {
         foreach my $hour ( keys %{ $per_minute_info{$curdb}{$day} } ) {
             my %hourly_data = ();
             foreach my $min ( keys %{ $per_minute_info{$curdb}{$day}{$hour} } )
             {
                 foreach (@columns) {
-                    $hourly_data{$_} +=
-                      $per_minute_info{$curdb}{$day}{$hour}{$min}{checkpoint}
-                      {$_};
+                    if ( $_ eq "sync_longest" ) {
+                        if ( $per_minute_info{$curdb}{$day}{$hour}{$min}
+                            {checkpoint}{$_} > $hourly_data{$_} )
+                        {
+                            $hourly_data{$_} =
+                              $per_minute_info{$curdb}{$day}{$hour}{$min}
+                              {checkpoint}{$_};
+                        }
+                    }
+                    else {
+                        $hourly_data{$_} +=
+                          $per_minute_info{$curdb}{$day}{$hour}{$min}
+                          {checkpoint}{$_};
+                    }
                 }
             }
-			print "$day $hour:00:00\t";
-			print "$hourly_data{$_}\t" for (keys %hourly_data);
-			print "\n";
-
+            $hourly_data{sync_average} = $hourly_data{sync_average} / 60;
+            $hourly_data{distance}     = $hourly_data{distance} / 60;
+            $hourly_data{estimate}     = $hourly_data{estimate} / 60;
+            print "$day $hour:00:00\t";
+            print "$hourly_data{$_}\t" for ( keys %hourly_data );
+            print "\n";
         }
     }
 }
@@ -1541,7 +1581,6 @@ sub fmtquery {
 # TOOL FUNCTIONS
 # Add your own below
 ###############################################################################
-
 
 # Dump top slowest queries as EXPLAIN statement.
 sub dump_slowest_queries {
