@@ -197,7 +197,10 @@ if ($explain_normalized) {
 # option --csv-time_consuming or --csv-slowest or --csv-normalized
 # are enabled.
 ##################################################################
-if ( $csv_time_consuming || $csv_slowest || $csv_normalized ) {
+if ($csv_slowest){
+          &csv_slowest_queries($def_db);
+}
+if ( $csv_time_consuming || $csv_normalized ) {
 
     # Check that Text::CSV is available
     if ( eval { require Text::CSV; 1; } ne 1 ) {
@@ -1968,37 +1971,17 @@ sub csv_normalized_queries {
 # Export slowest queries as CSV
 sub csv_slowest_queries {
     my $curdb = shift;
-
     my $fhcsv = undef;
-
-    my $csv = Text::CSV->new(
-        {
-            binary => 1,     # should set binary attribute.
-            eol    => $/,    # end of line character
-        }
-    ) or die "Cannot use CSV: " . Text::CSV->error_diag();
-    open $fhcsv, ">", "$csv_filename"
-      or die "FATAL: can not write to $csv_filename: $!\n";
-    $csv->print( $fhcsv, [ 'Database', 'Rank', 'Duration', 'Query' ] );
-
+    print "Database\tRank\tDuration\tQuery\n";
     my $rank = 1;
     for ( my $i = 0 ; $i <= $#{ $top_slowest{$curdb} } ; $i++ ) {
-
         # Do not process request that are slower than $max_duration
         next
           if ( $max_duration
             && ( $top_slowest{$curdb}[$i]->[0] > $max_duration ) );
-
-        $csv->print(
-            $fhcsv,
-            [
-                $top_slowest{$curdb}[$i]->[3], $rank,
-                $top_slowest{$curdb}[$i]->[0], $top_slowest{$curdb}[$i]->[2]
-            ]
-        );
+        print "$top_slowest{$curdb}[$i]->[3]\t$rank\t$top_slowest{$curdb}[$i]->[0]\t$top_slowest{$curdb}[$i]->[2]\n";
         last if ( $rank > $top );
         $rank++;
     }
-    close $fhcsv if ( defined $fhcsv );
 }
 
